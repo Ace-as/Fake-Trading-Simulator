@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SimuTrade - تداول وهمي</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background-color: #121212;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      background: #1f1f1f;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+    }
+    .container {
+      display: flex;
+      height: calc(100vh - 80px);
+    }
+    .sidebar {
+      width: 300px;
+      padding: 20px;
+      box-sizing: border-box;
+      background-color: #1e1e1e;
+    }
+    .sidebar h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: #00ff99;
+    }
+    .sidebar select,
+    .sidebar button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: #3a3a3a;
+      color: white;
+      cursor: pointer;
+    }
+    .sidebar button:hover {
+      background: #575757;
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    canvas {
+      width: 100% !important;
+      max-height: 90%;
+    }
+    #walletModal, #historyModal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .wallet-box, .history-box {
+      background-color: #1e1e1e;
+      border-radius: 12px;
+      padding: 30px;
+      text-align: center;
+      max-width: 400px;
+      width: 90%;
+      color: white;
+    }
+    .wallet-box button,
+    .history-box button {
+      background-color: #00ff99;
+      color: black;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    #historyModal {
+      display: none;
+      z-index: 2000;
+    }
+    #historyList {
+      list-style: none;
+      padding: 0;
+      text-align: left;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+    #historyList li {
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Wallet Modal -->
+  <div id="walletModal">
+    <div class="wallet-box">
+      <h2>💳 Open Trading Wallet</h2>
+      <p>Click to start using wallet.</p>
+      <button onclick="startWallet()">Start Now</button>
+    </div>
+  </div>
+
+  <!-- History Modal -->
+  <div id="historyModal">
+    <div class="history-box">
+      <h2>📜 Trade History</h2>
+      <ul id="historyList"></ul>
+      <button onclick="closeHistory()">✖️ Close</button>
+      <button onclick="clearHistory()" style="background:#ff4444; color:white;">🗑️ Clear History</button>
+    </div>
+  </div>
+
+  <!-- Page Content -->
+  <header>
+    <span id="title">💹 SimuTrade - Fake Trading Simulator</span>
+  </header>
+
+  <div class="container">
+    <div class="sidebar" id="sidebar">
+      <h2 id="infoTitle">📊 Account Info</h2>
+      <select id="currencySelect" onchange="switchCurrency()">
+        <option value="BTC">₿ Bitcoin</option>
+        <option value="ETH">Ξ Ethereum</option>
+        <option value="DOGE">Ð Dogecoin</option>
+      </select>
+
+      <p id="balanceText">💰 Balance: <span id="balance">0</span> $</p>
+      <p id="coinsText">📀 Coins: <span id="coins">0</span></p>
+      <p id="priceText">📈 Current Price: <span id="price">0</span> $</p>
+
+      <button onclick="buy()" id="buyBtn">🟢 Buy</button>
+      <button onclick="sell()" id="sellBtn">🔴 Sell</button>
+      <button onclick="showHistory()" style="background:#0099ff;">📜 View History</button>
+
+      <div style="flex: 1;"></div>
+      <button onclick="restartWallet()" style="background:#ff3333; margin-top: 50px;">♻️ Restart Wallet</button>
+    </div>
+
+    <div class="main">
+      <canvas id="priceChart" height="100"></canvas>
+    </div>
+  </div>
+
+  <script>
+    let current = 'BTC';
+    let walletData;
+    let history = JSON.parse(localStorage.getItem('simu_history') || '[]');
+
+    const defaultPrices = { BTC: 500, ETH: 200, DOGE: 0.1 };
+
+    const ctx = document.getElementById('priceChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [0],
+        datasets: [{
+          label: 'Coin Price',
+          data: [],
+          borderColor: 'rgba(0, 255, 132, 0.8)',
+          backgroundColor: 'rgba(0, 255, 132, 0.1)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { display: false },
+          y: { ticks: { color: 'white' }, grid: { color: '#444' } }
+        },
+        plugins: { legend: { labels: { color: 'white' } } }
+      }
+    });
+
+    function generateDeviceID() {
+      return 'id-' + Math.random().toString(36).substring(2, 10);
+    }
+
+    function startWallet() {
+      const id = generateDeviceID();
+      walletData = {
+        id,
+        BTC: { balance: 10000, coins: 0, price: defaultPrices.BTC, history: [defaultPrices.BTC] },
+        ETH: { balance: 10000, coins: 0, price: defaultPrices.ETH, history: [defaultPrices.ETH] },
+        DOGE: { balance: 10000, coins: 0, price: defaultPrices.DOGE, history: [defaultPrices.DOGE] }
+      };
+      localStorage.setItem('simu_wallet', JSON.stringify(walletData));
+      document.getElementById('walletModal').style.display = 'none';
+      updateDisplay();
+      updateChart();
+    }
+
+    function loadWallet() {
+      const saved = localStorage.getItem('simu_wallet');
+      if (saved) {
+        walletData = JSON.parse(saved);
+        document.getElementById('walletModal').style.display = 'none';
+        updateDisplay();
+        updateChart();
+      }
+    }
+
+    function saveWallet() {
+      localStorage.setItem('simu_wallet', JSON.stringify(walletData));
+    }
+
+    function updateDisplay() {
+      const coin = walletData[current];
+      document.getElementById("balance").textContent = coin.balance.toFixed(2);
+      document.getElementById("coins").textContent = coin.coins;
+      document.getElementById("price").textContent = coin.price.toFixed(2);
+    }
+
+    function updateChart() {
+      chart.data.datasets[0].data = walletData[current].history;
+      chart.data.labels = Array.from({ length: walletData[current].history.length }, (_, i) => i);
+      chart.update();
+    }
+
+    function updatePrice() {
+      const coin = walletData[current];
+      coin.price += (Math.random() - 0.5) * coin.price * 0.1;
+      coin.price = Math.max(coin.price, 0.01);
+      coin.history.push(coin.price);
+      if (coin.history.length > 50) coin.history.shift();
+      updateDisplay();
+      updateChart();
+      saveWallet();
+    }
+
+    function buy() {
+      const coin = walletData[current];
+      if (coin.balance >= coin.price) {
+        coin.balance -= coin.price;
+        coin.coins += 1;
+        logHistory(`🟢 Bought 1 ${current} for $${coin.price.toFixed(2)}`);
+        updateDisplay();
+        saveWallet();
+      } else {
+        alert("❌ Not enough balance!");
+      }
+    }
+
+    function sell() {
+      const coin = walletData[current];
+      if (coin.coins > 0) {
+        coin.balance += coin.price;
+        coin.coins -= 1;
+        logHistory(`🔴 Sold 1 ${current} for $${coin.price.toFixed(2)}`);
+        updateDisplay();
+        saveWallet();
+      } else {
+        alert("❌ You don't have coins to sell!");
+      }
+    }
+
+    function switchCurrency() {
+      current = document.getElementById("currencySelect").value;
+      updateDisplay();
+      updateChart();
+    }
+
+    function restartWallet() {
+      localStorage.removeItem('simu_wallet');
+      location.reload();
+    }
+
+    function logHistory(entry) {
+      const timestamp = new Date().toLocaleTimeString();
+      history.push(`[${timestamp}] ${entry}`);
+      localStorage.setItem('simu_history', JSON.stringify(history));
+    }
+
+    function showHistory() {
+      const list = document.getElementById("historyList");
+      list.innerHTML = history.length
+        ? history.map(item => `<li>${item}</li>`).join('')
+        : "<li style='color:#888;'>No history found.</li>";
+      document.getElementById("historyModal").style.display = "flex";
+    }
+
+    function closeHistory() {
+      document.getElementById("historyModal").style.display = "none";
+    }
+
+    function clearHistory() {
+      history = [];
+      localStorage.removeItem('simu_history');
+      document.getElementById("historyList").innerHTML = "<li style='color:#888;'>No history found.</li>";
+    }
+
+    loadWallet();
+    setInterval(() => {
+      if (walletData) updatePrice();
+    }, 3000);
+  </script>
+</body>
+</html>
